@@ -2,7 +2,6 @@
 
 from pathlib import Path
 import hashlib
-import re
 import sys
 import unittest
 from unittest.mock import patch
@@ -17,29 +16,6 @@ from validate_galaxy import validate
 class RecoveryTests(unittest.TestCase):
     def test_galaxy_array_syntax(self):
         self.assertIn("PASS", validate(self_test=True))
-
-    def test_army_controls_still_match_working_backup(self):
-        current = build_map.source_code()
-        backup = (ROOT / "backups/v0.1-marine-only/Arena.galaxy").read_text(encoding="utf-8")
-
-        def function_body(source, name):
-            match = re.search(r"\b(?:void|bool|int)\s+" + name + r"\s*\([^)]*\)\s*\{", source)
-            self.assertIsNotNone(match, name)
-            position = match.end()
-            depth = 1
-            while depth:
-                character = source[position]
-                position += 1
-                if character == "{":
-                    depth += 1
-                elif character == "}":
-                    depth -= 1
-            return source[match.start():position]
-
-        # The roster changes the unit type spawned. The existing button actions,
-        # army clearing, counters, and death handling stay at the tested baseline.
-        for name in ["ArenaButtonClicked", "ArenaClearGroup", "ArenaUnitDied", "ArenaRefreshStatus"]:
-            self.assertEqual(function_body(current, name), function_body(backup, name), name)
 
     def test_bad_syntax_cannot_replace_the_playable_map(self):
         paths = [build_map.MAP / "Triggers", build_map.MAP / "MapScript.galaxy"]

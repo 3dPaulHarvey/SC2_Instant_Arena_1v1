@@ -1,6 +1,7 @@
 DocInfo/Name=Instant Arena - Basic Marine Arena
-DocInfo/DescShort=Instant Marine spawning and endless solo combat.
-DocInfo/DescLong=Spawn friendly or enemy Marines, clear your army, and reset the arena. This is the tested basic solo version.
+DocInfo/DescShort=Instant Arena v0.1.5: solo or two-player combat sandbox.
+DocInfo/DescLong=Choose from 52 multiplayer units for solo testing or a two-human arena sandbox. Each human spawns, commands, and clears their own army. Solo mode also provides enemy spawning and arena reset.
 MapInfo/Player00/Name=Neutral
-MapInfo/Player01/Name=You
+MapInfo/Player01/Name=Player 1
+MapInfo/Player02/Name=Player 2
 MapInfo/Player15/Name=Enemy
