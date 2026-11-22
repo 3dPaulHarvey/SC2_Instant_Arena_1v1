@@ -85,21 +85,20 @@ class MultiplayerSourceTests(unittest.TestCase):
 
     def test_selections_and_events_are_bound_to_the_acting_player(self):
         selected = self.compact(self.body("ArenaSelectedUnitType"))
-        self.assertIn("DialogControlGetSelectedItem(arenaRaceMenu[player],player)", selected)
-        self.assertIn("DialogControlGetSelectedItem(arenaUnitMenu[player],player)", selected)
+        self.assertIn("returnarenaSelectedUnit[player];", selected)
         for name in ("ArenaButtonClicked", "ArenaMenuChanged"):
             with self.subTest(callback=name):
                 callback = self.compact(self.body(name))
                 self.assertIn("player=EventPlayer();", callback)
                 self.assertIn("!ArenaIsHumanPlayer(player)", callback)
         buttons = self.compact(self.body("ArenaButtonClicked"))
-        self.assertIn("control==arenaSpawnButton[player]", buttons)
-        self.assertIn("ArenaSpawn(player,player);", buttons)
+        self.assertIn("arenaFavoriteButton[player]", buttons)
+        self.assertIn("ArenaSpawn(player,player,arenaFavoriteUnit[player]", buttons)
         menus = self.compact(self.body("ArenaMenuChanged"))
         self.assertIn("arenaRaceMenu[player]", menus)
         self.assertIn("arenaUnitMenu[player]", menus)
         self.assertIn("ArenaFillUnitMenu(player);", menus)
-        self.assertIn("ArenaRefreshSelection(player);", menus)
+        self.assertIn("ArenaAddFavorite(player,unitType);", menus)
 
     def test_clear_my_army_cannot_clear_opponent(self):
         callback = self.body("ArenaButtonClicked")
@@ -114,7 +113,7 @@ class MultiplayerSourceTests(unittest.TestCase):
         self.assertIn("owner!=player", guarded)
         self.assertIn("arenaHumanMatch", guarded)
         self.assertIn("owner!=ARENA_ENEMY", guarded)
-        self.assertIn("ArenaSelectedUnitType(player)", guarded)
+        self.assertNotIn("ArenaSelectedUnitType(player)", spawn)
         self.assertIn("army=arenaArmy[owner];", guarded)
         self.assertIn("spawn=arenaSpawnPoint[owner];", guarded)
         self.assertIn("UnitGroupCount(army,c_unitCountAlive)>=ARENA_LIMIT", guarded)
@@ -124,7 +123,9 @@ class MultiplayerSourceTests(unittest.TestCase):
     def test_spawn_guards_allow_only_each_human_or_the_solo_enemy(self):
         human_expression = re.search(r"return\s+([^;]+);", self.body("ArenaIsHumanPlayer"))[1]
         guards = re.findall(r"if\s*\((.*?)\)\s*\{\s*return\s*;",
-            self.body("ArenaSpawn").split("unitType =", 1)[0], re.DOTALL)
+            self.body("ArenaSpawn").split("army =", 1)[0], re.DOTALL)
+        # The ownership guards precede input and quantity validation.
+        guards = guards[:2]
         self.assertEqual(len(guards), 2)
         allowed = {(False, 1, 1), (False, 1, 15), (True, 1, 1), (True, 2, 2)}
         for human_match in (False, True):
@@ -149,7 +150,7 @@ class MultiplayerSourceTests(unittest.TestCase):
         buttons = self.compact(self.body("ArenaButtonClicked"))
         self.assertIn("!arenaHumanMatch&&control==arenaEnemyButton[player]", buttons)
         self.assertIn("!arenaHumanMatch&&control==arenaResetButton[player]", buttons)
-        self.assertIn("ArenaSpawn(player,ARENA_ENEMY);", buttons)
+        self.assertIn("ArenaSpawn(player,ARENA_ENEMY,ArenaSelectedUnitType(player),1);", buttons)
     def test_speed_control_is_host_only_and_labels_sync_for_both_humans(self):
         speed = self.compact(self.body("ArenaSpeedChanged"))
         self.assertIn("EventPlayer()!=ARENA_PLAYER", speed)

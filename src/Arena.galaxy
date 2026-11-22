@@ -1,10 +1,11 @@
-// Instant Arena v0.1.5 - solo or two-human 1v1 sandbox.
+// Instant Arena v0.1.7 - researched, battle-ready armies at 1-1.
 // The build script embeds this code into the map's editable Custom Script element.
 
 const int ARENA_PLAYER = 1;
 const int ARENA_PLAYER_TWO = 2;
 const int ARENA_ENEMY = 15;
 const int ARENA_LIMIT = 100;
+const int ARENA_FAVORITES = 3;
 
 bool arenaHumanMatch = false;
 unitgroup[16] arenaArmy;
@@ -12,7 +13,10 @@ point[16] arenaSpawnPoint;
 int[3] arenaDialog;
 int[3] arenaRaceMenu;
 int[3] arenaUnitMenu;
-int[3] arenaSpawnButton;
+string[3] arenaSelectedUnit;
+string[3][3] arenaFavoriteUnit;
+int[3][3] arenaFavoriteLabel;
+int[3][3][3] arenaFavoriteButton;
 int[3] arenaEnemyButton;
 int[3] arenaClearButton;
 int[3] arenaResetButton;
@@ -50,7 +54,7 @@ void ArenaRefreshStatus () {
 int ArenaButton (int player, string caption, int y) {
     int control;
     control = DialogControlCreate(arenaDialog[player], c_triggerControlTypeButton);
-    DialogControlSetSize(control, PlayerGroupSingle(player), 260, 38);
+    DialogControlSetSize(control, PlayerGroupSingle(player), 300, 38);
     DialogControlSetPosition(control, PlayerGroupSingle(player), c_anchorTopLeft, 20, y);
     libNtve_gf_SetDialogItemText(control, StringToText(caption), PlayerGroupSingle(player));
     return control;
@@ -60,12 +64,12 @@ int ArenaMenu (int player, int y) {
     int control;
     control = DialogControlCreate(arenaDialog[player], c_triggerControlTypePulldown);
     // SC2's pulldown frame needs more vertical padding than a plain button.
-    DialogControlSetSize(control, PlayerGroupSingle(player), 260, 52);
+    DialogControlSetSize(control, PlayerGroupSingle(player), 300, 52);
     DialogControlSetPosition(control, PlayerGroupSingle(player), c_anchorTopLeft, 20, y);
     return control;
 }
 
-// Pulldown item indices start at 1. Invalid selections never create a unit.
+// Roster indices start at 1. The unit pulldown reserves item 1 for its prompt.
 // Standard multiplayer units in their normal mobile form; no custom assets.
 int ArenaUnitCount (int race) {
     if (race == 1) { return 17; }
@@ -137,8 +141,7 @@ string ArenaUnitType (int race, int index) {
 }
 
 string ArenaSelectedUnitType (int player) {
-    return ArenaUnitType(DialogControlGetSelectedItem(arenaRaceMenu[player], player),
-        DialogControlGetSelectedItem(arenaUnitMenu[player], player));
+    return arenaSelectedUnit[player];
 }
 
 void ArenaRefreshSelection (int player) {
@@ -147,10 +150,50 @@ void ArenaRefreshSelection (int player) {
     if (unitType == "") {
         return;
     }
-    libNtve_gf_SetDialogItemText(arenaSpawnButton[player], StringToText("Spawn My ") + UnitTypeGetName(unitType), PlayerGroupSingle(player));
     if (!arenaHumanMatch) {
         libNtve_gf_SetDialogItemText(arenaEnemyButton[player], StringToText("Spawn Enemy ") + UnitTypeGetName(unitType), PlayerGroupSingle(player));
     }
+}
+
+int ArenaFavoriteQuantity (int buttonIndex) {
+    if (buttonIndex == 0) { return 10; }
+    if (buttonIndex == 1) { return 5; }
+    if (buttonIndex == 2) { return 1; }
+    return 0;
+}
+
+void ArenaRefreshFavorites (int player) {
+    int slot;
+    int buttonIndex;
+    slot = 0;
+    while (slot < ARENA_FAVORITES) {
+        libNtve_gf_SetDialogItemText(arenaFavoriteLabel[player][slot],
+            UnitTypeGetName(arenaFavoriteUnit[player][slot]), PlayerGroupSingle(player));
+        buttonIndex = 0;
+        while (buttonIndex < 3) {
+            DialogControlSetPropertyAsText(arenaFavoriteButton[player][slot][buttonIndex],
+                c_triggerControlPropertyTooltip, PlayerGroupSingle(player),
+                StringToText("Spawn " + IntToString(ArenaFavoriteQuantity(buttonIndex)) + " ")
+                    + UnitTypeGetName(arenaFavoriteUnit[player][slot]));
+            buttonIndex += 1;
+        }
+        slot += 1;
+    }
+}
+
+void ArenaAddFavorite (int player, string unitType) {
+    int slot;
+    if (!ArenaIsHumanPlayer(player) || unitType == "") {
+        return;
+    }
+    // Oldest is at the top; every explicit pick joins the bottom of the queue.
+    slot = 0;
+    while (slot < ARENA_FAVORITES - 1) {
+        arenaFavoriteUnit[player][slot] = arenaFavoriteUnit[player][slot + 1];
+        slot += 1;
+    }
+    arenaFavoriteUnit[player][ARENA_FAVORITES - 1] = unitType;
+    ArenaRefreshFavorites(player);
 }
 
 void ArenaFillUnitMenu (int player) {
@@ -161,17 +204,21 @@ void ArenaFillUnitMenu (int player) {
         return;
     }
     DialogControlRemoveAllItems(arenaUnitMenu[player], PlayerGroupSingle(player));
+    DialogControlAddItem(arenaUnitMenu[player], PlayerGroupSingle(player), StringToText("Add unit to favorites..."));
     index = 1;
     while (index <= ArenaUnitCount(race)) {
         DialogControlAddItem(arenaUnitMenu[player], PlayerGroupSingle(player), UnitTypeGetName(ArenaUnitType(race, index)));
         index += 1;
     }
+    arenaSelectedUnit[player] = ArenaUnitType(race, 1);
     DialogControlSelectItem(arenaUnitMenu[player], PlayerGroupSingle(player), 1);
     ArenaRefreshSelection(player);
 }
 
 bool ArenaMenuChanged (bool testConds, bool runActions) {
     int player;
+    int index;
+    string unitType;
     player = EventPlayer();
     if (!runActions || !ArenaIsHumanPlayer(player)) {
         return true;
@@ -180,7 +227,16 @@ bool ArenaMenuChanged (bool testConds, bool runActions) {
         ArenaFillUnitMenu(player);
     }
     else if (EventDialogControl() == arenaUnitMenu[player]) {
+        index = DialogControlGetSelectedItem(arenaUnitMenu[player], player) - 1;
+        unitType = ArenaUnitType(DialogControlGetSelectedItem(arenaRaceMenu[player], player), index);
+        if (unitType == "") {
+            return true;
+        }
+        arenaSelectedUnit[player] = unitType;
+        ArenaAddFavorite(player, unitType);
         ArenaRefreshSelection(player);
+        // Reset to the prompt so choosing the same unit again is a new event.
+        DialogControlSelectItem(arenaUnitMenu[player], PlayerGroupSingle(player), 1);
     }
     return true;
 }
@@ -249,13 +305,138 @@ void ArenaClearGroup (unitgroup army) {
     }
 }
 
-void ArenaSpawn (int player, int owner) {
+void ArenaGrantUpgrade (int player, string upgrade) {
+    if (upgrade != "" && CatalogEntryIsValid(c_gameCatalogUpgrade, upgrade)) {
+        // Set, never accumulate: repeat setup cannot turn 1-1 into 2-2.
+        libNtve_gf_SetUpgradeLevelForPlayer(player, upgrade, 1);
+    }
+}
+
+void ArenaGrantResearch (int player, string structure) {
+    int card;
+    int button;
+    string layout;
+    string field;
+    string commandText;
+    string ability;
+    string upgrade;
+    abilcmd command;
+    // Read the active multiplayer command cards, not every historical upgrade
+    // left in the catalog. This also follows research changes in SC2 patches.
+    card = 0;
+    while (card < CatalogFieldValueCount(c_gameCatalogUnit, structure, "CardLayouts", player)) {
+        layout = "CardLayouts[" + IntToString(card) + "].LayoutButtons";
+        button = 0;
+        while (button < CatalogFieldValueCount(c_gameCatalogUnit, structure, layout, player)) {
+            field = layout + "[" + IntToString(button) + "]";
+            if (CatalogFieldValueGet(c_gameCatalogUnit, structure, field + ".Type", player) == "AbilCmd") {
+                commandText = CatalogFieldValueGet(c_gameCatalogUnit, structure, field + ".AbilCmd", player);
+                if (commandText != "") {
+                    command = StringToAbilCmd(commandText);
+                    ability = AbilityCommandGetAbility(command);
+                    if (CatalogEntryIsValid(c_gameCatalogAbil, ability)
+                        && CatalogEntryScope(c_gameCatalogAbil, ability) == "CAbilResearch") {
+                        field = "InfoArray[" + IntToString(AbilityCommandGetCommand(command)) + "].Upgrade";
+                        upgrade = CatalogFieldValueGet(c_gameCatalogAbil, ability, field, player);
+                        ArenaGrantUpgrade(player, upgrade);
+                    }
+                }
+            }
+            button += 1;
+        }
+        card += 1;
+    }
+}
+
+void ArenaPreparePlayer (int player) {
+    // Every race is enabled because favorites can contain mixed-race armies.
+    ArenaGrantUpgrade(player, "TerranInfantryWeaponsLevel1");
+    ArenaGrantUpgrade(player, "TerranInfantryArmorsLevel1");
+    ArenaGrantUpgrade(player, "TerranVehicleWeaponsLevel1");
+    ArenaGrantUpgrade(player, "TerranShipWeaponsLevel1");
+    // Combined plating already covers both; separate armor upgrades would stack.
+    ArenaGrantUpgrade(player, "TerranVehicleAndShipArmorsLevel1");
+    ArenaGrantUpgrade(player, "ProtossGroundWeaponsLevel1");
+    ArenaGrantUpgrade(player, "ProtossGroundArmorsLevel1");
+    ArenaGrantUpgrade(player, "ProtossAirWeaponsLevel1");
+    ArenaGrantUpgrade(player, "ProtossAirArmorsLevel1");
+    ArenaGrantUpgrade(player, "ProtossShieldsLevel1");
+    ArenaGrantUpgrade(player, "ZergMeleeWeaponsLevel1");
+    ArenaGrantUpgrade(player, "ZergMissileWeaponsLevel1");
+    ArenaGrantUpgrade(player, "ZergGroundArmorsLevel1");
+    ArenaGrantUpgrade(player, "ZergFlyerWeaponsLevel1");
+    ArenaGrantUpgrade(player, "ZergFlyerArmorsLevel1");
+
+    // Only unit-specialist research structures: exclude the weapon/armor
+    // research buildings so their level 2 and 3 buttons are never granted.
+    ArenaGrantResearch(player, "BarracksTechLab");
+    ArenaGrantResearch(player, "FactoryTechLab");
+    ArenaGrantResearch(player, "StarportTechLab");
+    ArenaGrantResearch(player, "GhostAcademy");
+    ArenaGrantResearch(player, "FusionCore");
+    ArenaGrantResearch(player, "TwilightCouncil");
+    ArenaGrantResearch(player, "TemplarArchive");
+    ArenaGrantResearch(player, "DarkShrine");
+    ArenaGrantResearch(player, "RoboticsBay");
+    ArenaGrantResearch(player, "FleetBeacon");
+    ArenaGrantResearch(player, "Hatchery");
+    ArenaGrantResearch(player, "Lair");
+    ArenaGrantResearch(player, "Hive");
+    ArenaGrantResearch(player, "SpawningPool");
+    ArenaGrantResearch(player, "BanelingNest");
+    ArenaGrantResearch(player, "RoachWarren");
+    ArenaGrantResearch(player, "HydraliskDen");
+    ArenaGrantResearch(player, "LurkerDenMP");
+    ArenaGrantResearch(player, "InfestationPit");
+    ArenaGrantResearch(player, "UltraliskCavern");
+
+    // The sandbox has no Armory. Allow the two Hellion modes without disabling
+    // other requirements (magazine capacity, spell costs, etc. still apply).
+    CatalogFieldValueSet(c_gameCatalogAbil, "MorphToHellion", "CmdButtonArray[Execute].Requirements", player, "");
+    CatalogFieldValueSet(c_gameCatalogAbil, "MorphToHellionTank", "CmdButtonArray[Execute].Requirements", player, "");
+    // Carriers can rebuild lost interceptors in an arena with no economy.
+    CatalogFieldValueSet(c_gameCatalogAbil, "CarrierHangar", "InfoArray[Ammo1].Resource[Minerals]", player, "0");
+}
+
+void ArenaPrepareUnit (unit spawned) {
+    int capacity;
+    int missing;
+    UnitSetPropertyFixed(spawned, c_unitPropLifePercent, 100.0);
+    UnitSetPropertyFixed(spawned, c_unitPropShieldsPercent, 100.0);
+    UnitSetPropertyFixed(spawned, c_unitPropEnergyPercent, 100.0);
+    if (UnitAbilityExists(spawned, "CarrierHangar")) {
+        capacity = StringToInt(CatalogFieldValueGet(c_gameCatalogAbil, "CarrierHangar", "MaxCount", UnitGetOwner(spawned)));
+        missing = capacity - UnitMagazineCount(spawned, "CarrierHangar");
+        if (missing > 0) {
+            UnitMagazineArm(spawned, AbilityCommand("CarrierHangar", 0), missing);
+        }
+    }
+}
+
+point ArenaFormationPoint (int owner, int index, int quantity) {
+    int rows;
+    int column;
+    fixed x;
+    fixed y;
+    rows = quantity;
+    if (rows > 5) { rows = 5; }
+    column = 0;
+    if (index >= 5) { column = 1; }
+    x = PointGetX(arenaSpawnPoint[owner]);
+    y = PointGetY(arenaSpawnPoint[owner]) + IntToFixed(index % 5) * 2.0 - IntToFixed(rows - 1);
+    // Mirror two files behind each side's front line, facing the opponent.
+    if (owner == ARENA_PLAYER) { x -= IntToFixed(column) * 2.0; }
+    else { x += IntToFixed(column) * 2.0; }
+    return Point(x, y);
+}
+
+void ArenaSpawn (int player, int owner, string unitType, int quantity) {
     unitgroup army;
     unitgroup created;
     unit spawned;
     point spawn;
     fixed facing;
-    string unitType;
+    int count;
     if (!ArenaIsHumanPlayer(player)) {
         return;
     }
@@ -263,8 +444,7 @@ void ArenaSpawn (int player, int owner) {
     if (owner != player && (arenaHumanMatch || player != ARENA_PLAYER || owner != ARENA_ENEMY)) {
         return;
     }
-    unitType = ArenaSelectedUnitType(player);
-    if (unitType == "") {
+    if (unitType == "" || quantity < 1 || quantity > 10) {
         return;
     }
     army = arenaArmy[owner];
@@ -276,10 +456,19 @@ void ArenaSpawn (int player, int owner) {
             StringToText("100 living units on this side. Clear an army or fight to make room."));
         return;
     }
-    created = UnitCreate(1, unitType, 0, owner, spawn, facing);
-    spawned = UnitGroupUnit(created, 1);
-    // Normal placement lets SC2 find nearby space instead of stacking units.
-    if (spawned != null) {
+    count = 0;
+    // Create individually for normal placement and stop exactly at the living cap.
+    while (count < quantity && UnitGroupCount(army, c_unitCountAlive) < ARENA_LIMIT) {
+        spawn = ArenaFormationPoint(owner, count, quantity);
+        created = UnitCreate(1, unitType, 0, owner, spawn, facing);
+        spawned = UnitGroupUnit(created, 1);
+        if (spawned == null) {
+            UIDisplayMessage(PlayerGroupSingle(player), c_messageAreaSubtitle,
+                StringToText("No room here. Move units away or clear an army."));
+            ArenaRefreshStatus();
+            return;
+        }
+        ArenaPrepareUnit(spawned);
         UnitGroupAdd(army, spawned);
         if (!arenaHumanMatch && owner == ARENA_ENEMY) {
             if (UnitAbilityExists(spawned, "attack")) {
@@ -292,10 +481,7 @@ void ArenaSpawn (int player, int owner) {
                     OrderTargetingPoint(AbilityCommand("move", 0), arenaSpawnPoint[ARENA_PLAYER]), c_orderQueueReplace);
             }
         }
-    }
-    else {
-        UIDisplayMessage(PlayerGroupSingle(player), c_messageAreaSubtitle,
-            StringToText("No room here. Move units away or clear an army."));
+        count += 1;
     }
     ArenaRefreshStatus();
 }
@@ -303,16 +489,27 @@ void ArenaSpawn (int player, int owner) {
 bool ArenaButtonClicked (bool testConds, bool runActions) {
     int player;
     int control;
+    int slot;
+    int buttonIndex;
     player = EventPlayer();
     if (!runActions || !ArenaIsHumanPlayer(player)) {
         return true;
     }
     control = EventDialogControl();
-    if (control == arenaSpawnButton[player]) {
-        ArenaSpawn(player, player);
+    slot = 0;
+    while (slot < ARENA_FAVORITES) {
+        buttonIndex = 0;
+        while (buttonIndex < 3) {
+            if (control == arenaFavoriteButton[player][slot][buttonIndex]) {
+                ArenaSpawn(player, player, arenaFavoriteUnit[player][slot], ArenaFavoriteQuantity(buttonIndex));
+                return true;
+            }
+            buttonIndex += 1;
+        }
+        slot += 1;
     }
-    else if (!arenaHumanMatch && control == arenaEnemyButton[player]) {
-        ArenaSpawn(player, ARENA_ENEMY);
+    if (!arenaHumanMatch && control == arenaEnemyButton[player]) {
+        ArenaSpawn(player, ARENA_ENEMY, ArenaSelectedUnitType(player), 1);
     }
     else if (control == arenaClearButton[player]) {
         ArenaClearGroup(arenaArmy[player]);
@@ -348,6 +545,13 @@ bool ArenaUnitDied (bool testConds, bool runActions) {
 void ArenaCreatePanel (int player) {
     int titleLabel;
     int helpLabel;
+    int favoritesTitle;
+    int favoritesHelp;
+    int slotLabel;
+    int slot;
+    int buttonIndex;
+    int rowY;
+    string slotCaption;
     int speedHelpLabel;
     int helpY;
     int speedY;
@@ -356,26 +560,26 @@ void ArenaCreatePanel (int player) {
     trigger menuTrigger;
     trigger speedTrigger;
 
-    panelHeight = 526;
-    helpY = 382;
+    panelHeight = 904;
+    helpY = 760;
     if (arenaHumanMatch) {
-        panelHeight = 430;
-        helpY = 286;
+        panelHeight = 816;
+        helpY = 672;
     }
     speedY = helpY + 36;
-    arenaDialog[player] = DialogCreate(300, panelHeight, c_anchorTopLeft, 14, 14, false);
+    arenaDialog[player] = DialogCreate(340, panelHeight, c_anchorTopLeft, 14, 14, false);
     titleLabel = DialogControlCreate(arenaDialog[player], c_triggerControlTypeLabel);
-    DialogControlSetSize(titleLabel, PlayerGroupSingle(player), 260, 24);
+    DialogControlSetSize(titleLabel, PlayerGroupSingle(player), 300, 24);
     DialogControlSetPosition(titleLabel, PlayerGroupSingle(player), c_anchorTopLeft, 20, 16);
     if (arenaHumanMatch) {
-        libNtve_gf_SetDialogItemText(titleLabel, StringToText("INSTANT ARENA v0.1.5 - 1V1"), PlayerGroupSingle(player));
+        libNtve_gf_SetDialogItemText(titleLabel, StringToText("INSTANT ARENA v0.1.7 - 1V1"), PlayerGroupSingle(player));
     }
     else {
-        libNtve_gf_SetDialogItemText(titleLabel, StringToText("INSTANT ARENA v0.1.5 - SOLO"), PlayerGroupSingle(player));
+        libNtve_gf_SetDialogItemText(titleLabel, StringToText("INSTANT ARENA v0.1.7 - SOLO"), PlayerGroupSingle(player));
     }
 
     arenaStatusLabel[player] = DialogControlCreate(arenaDialog[player], c_triggerControlTypeLabel);
-    DialogControlSetSize(arenaStatusLabel[player], PlayerGroupSingle(player), 260, 24);
+    DialogControlSetSize(arenaStatusLabel[player], PlayerGroupSingle(player), 300, 24);
     DialogControlSetPosition(arenaStatusLabel[player], PlayerGroupSingle(player), c_anchorTopLeft, 20, 42);
     arenaRaceMenu[player] = ArenaMenu(player, 72);
     DialogControlAddItem(arenaRaceMenu[player], PlayerGroupSingle(player), StringToText("Terran"));
@@ -383,34 +587,72 @@ void ArenaCreatePanel (int player) {
     DialogControlAddItem(arenaRaceMenu[player], PlayerGroupSingle(player), StringToText("Zerg"));
     DialogControlSelectItem(arenaRaceMenu[player], PlayerGroupSingle(player), 1);
     arenaUnitMenu[player] = ArenaMenu(player, 132);
-    arenaSpawnButton[player] = ArenaButton(player, "Spawn My Marine", 198);
+    favoritesTitle = DialogControlCreate(arenaDialog[player], c_triggerControlTypeLabel);
+    DialogControlSetSize(favoritesTitle, PlayerGroupSingle(player), 300, 24);
+    DialogControlSetPosition(favoritesTitle, PlayerGroupSingle(player), c_anchorTopLeft, 20, 196);
+    libNtve_gf_SetDialogItemText(favoritesTitle, StringToText("FAVORITES"), PlayerGroupSingle(player));
+    favoritesHelp = DialogControlCreate(arenaDialog[player], c_triggerControlTypeLabel);
+    DialogControlSetSize(favoritesHelp, PlayerGroupSingle(player), 300, 24);
+    DialogControlSetPosition(favoritesHelp, PlayerGroupSingle(player), c_anchorTopLeft, 20, 222);
+    libNtve_gf_SetDialogItemText(favoritesHelp, StringToText("1-1 + shields | All unit research"), PlayerGroupSingle(player));
+    DialogControlSetPropertyAsText(favoritesHelp, c_triggerControlPropertyTooltip, PlayerGroupSingle(player),
+        StringToText("New picks replace the oldest favorite. Units spawn with full health, shields and energy. Use abilities from their command cards; normal costs and cooldowns apply."));
+    arenaFavoriteUnit[player][0] = "Marine";
+    arenaFavoriteUnit[player][1] = "VoidRay";
+    arenaFavoriteUnit[player][2] = "Queen";
+    slot = 0;
+    while (slot < ARENA_FAVORITES) {
+        rowY = 250 + slot * 122;
+        slotCaption = "2";
+        if (slot == 0) { slotCaption = "1 - OLDEST"; }
+        if (slot == 2) { slotCaption = "3 - NEWEST"; }
+        slotLabel = DialogControlCreate(arenaDialog[player], c_triggerControlTypeLabel);
+        DialogControlSetSize(slotLabel, PlayerGroupSingle(player), 222, 20);
+        DialogControlSetPosition(slotLabel, PlayerGroupSingle(player), c_anchorTopLeft, 26, rowY + 6);
+        libNtve_gf_SetDialogItemText(slotLabel, StringToText(slotCaption), PlayerGroupSingle(player));
+        arenaFavoriteLabel[player][slot] = DialogControlCreate(arenaDialog[player], c_triggerControlTypeLabel);
+        DialogControlSetSize(arenaFavoriteLabel[player][slot], PlayerGroupSingle(player), 222, 28);
+        DialogControlSetPosition(arenaFavoriteLabel[player][slot], PlayerGroupSingle(player), c_anchorTopLeft, 26, rowY + 34);
+        buttonIndex = 0;
+        while (buttonIndex < 3) {
+            arenaFavoriteButton[player][slot][buttonIndex] = DialogControlCreate(arenaDialog[player], c_triggerControlTypeButton);
+            DialogControlSetSize(arenaFavoriteButton[player][slot][buttonIndex], PlayerGroupSingle(player), 64, 38);
+            DialogControlSetPosition(arenaFavoriteButton[player][slot][buttonIndex], PlayerGroupSingle(player),
+                c_anchorTopLeft, 256, rowY + buttonIndex * 38);
+            libNtve_gf_SetDialogItemText(arenaFavoriteButton[player][slot][buttonIndex],
+                StringToText(IntToString(ArenaFavoriteQuantity(buttonIndex))), PlayerGroupSingle(player));
+            buttonIndex += 1;
+        }
+        slot += 1;
+    }
+    ArenaRefreshFavorites(player);
     if (arenaHumanMatch) {
-        arenaClearButton[player] = ArenaButton(player, "Clear My Army", 242);
+        arenaClearButton[player] = ArenaButton(player, "Clear My Army", 626);
     }
     else {
-        arenaEnemyButton[player] = ArenaButton(player, "Spawn Enemy Marine", 242);
-        arenaClearButton[player] = ArenaButton(player, "Clear My Army", 286);
-        arenaResetButton[player] = ArenaButton(player, "Reset Arena", 330);
+        arenaEnemyButton[player] = ArenaButton(player, "Spawn Enemy Marine", 626);
+        arenaClearButton[player] = ArenaButton(player, "Clear My Army", 670);
+        arenaResetButton[player] = ArenaButton(player, "Reset Arena", 714);
     }
     ArenaFillUnitMenu(player);
     helpLabel = DialogControlCreate(arenaDialog[player], c_triggerControlTypeLabel);
-    DialogControlSetSize(helpLabel, PlayerGroupSingle(player), 260, 26);
+    DialogControlSetSize(helpLabel, PlayerGroupSingle(player), 300, 26);
     DialogControlSetPosition(helpLabel, PlayerGroupSingle(player), c_anchorTopLeft, 20, helpY);
     if (arenaHumanMatch) {
         libNtve_gf_SetDialogItemText(helpLabel, StringToText("Select units to move or attack."), PlayerGroupSingle(player));
     }
     else {
-        libNtve_gf_SetDialogItemText(helpLabel, StringToText("Choose race, unit, then spawn."), PlayerGroupSingle(player));
+        libNtve_gf_SetDialogItemText(helpLabel, StringToText("Use 10 / 5 / 1 beside a favorite to spawn."), PlayerGroupSingle(player));
     }
 
     arenaSpeedLabel[player] = DialogControlCreate(arenaDialog[player], c_triggerControlTypeLabel);
-    DialogControlSetSize(arenaSpeedLabel[player], PlayerGroupSingle(player), 260, 24);
+    DialogControlSetSize(arenaSpeedLabel[player], PlayerGroupSingle(player), 300, 24);
     DialogControlSetPosition(arenaSpeedLabel[player], PlayerGroupSingle(player), c_anchorTopLeft, 20, speedY);
     speedHelpLabel = DialogControlCreate(arenaDialog[player], c_triggerControlTypeLabel);
-    DialogControlSetSize(speedHelpLabel, PlayerGroupSingle(player), 260, 24);
+    DialogControlSetSize(speedHelpLabel, PlayerGroupSingle(player), 300, 24);
     if (player == ARENA_PLAYER) {
         arenaSpeedSlider = DialogControlCreate(arenaDialog[player], c_triggerControlTypeSlider);
-        DialogControlSetSize(arenaSpeedSlider, PlayerGroupSingle(player), 260, 32);
+        DialogControlSetSize(arenaSpeedSlider, PlayerGroupSingle(player), 300, 32);
         DialogControlSetPosition(arenaSpeedSlider, PlayerGroupSingle(player), c_anchorTopLeft, 20, speedY + 32);
         DialogControlSetPropertyAsFixed(arenaSpeedSlider, c_triggerControlPropertyMinValue,
             PlayerGroupSingle(player), IntToFixed(c_gameSpeedSlower));
@@ -450,6 +692,11 @@ void ArenaInit () {
     arenaSpawnPoint[ARENA_PLAYER] = Point(9.0, 16.0);
     arenaSpawnPoint[ARENA_PLAYER_TWO] = Point(23.0, 16.0);
     arenaSpawnPoint[ARENA_ENEMY] = Point(23.0, 16.0);
+
+    // Run before any menus can spawn units, equally for both human slots and AI.
+    ArenaPreparePlayer(ARENA_PLAYER);
+    ArenaPreparePlayer(ARENA_PLAYER_TWO);
+    ArenaPreparePlayer(ARENA_ENEMY);
 
     // Deliberately omit melee initialization: no starting economy or defeat rules.
     if (arenaHumanMatch) {

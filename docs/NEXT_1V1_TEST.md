@@ -1,17 +1,29 @@
-# First two-human sandbox test: v0.1.5
+# Battle-ready armies and two-human sandbox test: v0.1.7
 
-This increment adds two independent human armies and menus. It preserves the
-solo fallback when Player 2 is not an active human. It does not add rounds,
+This increment adds full unit research, 1-1 upgrades, full starting vitals and
+mirrored formations. Complete [COMBAT_SETUP_TEST.md](COMBAT_SETUP_TEST.md) on both
+clients. It retains three FIFO favorite slots per player, each with stacked
+**10**, **5**, and **1** spawn buttons. It preserves independent human armies
+and the solo fallback when Player 2 is not an active human. It does not add rounds,
 scoring, victory screens, rematches, or disconnect handling. Treat the steps
 below as pending until they are run; code and syntax checks do not establish
 online play results.
 
-Automated validation passed: Galaxy syntax, 20 source/metadata regression checks,
-and 22 native SC2 smoke checks. The native smoke exercised actual solo startup
+The historical v0.1.6 build passed Galaxy syntax and all **30 regression checks**, including
+favorites ordering, repeated selections, batch counts, limits, and isolation.
+An isolated native SC2 run passed **40 checks** on the final layout, including
+dropdown selection events, repeated picks, FIFO, batch counts, the exact cap,
+ownership, speed preservation, and a simulated second player. No new script or
+text errors appeared. Visual review remains pending because window capture timed
+out; physical clicks and two-client synchronization still need the checklist.
+
+The v0.1.5 baseline passed Galaxy syntax, 20 source/metadata regression checks,
+and 22 native SC2 smoke checks. That native smoke exercised actual solo startup
 and explicitly simulated two-player panels, menus, ownership, clearing, and limits
 within one client. All five speeds passed. No new script or text-error log appeared.
 The production map contains no smoke harness. Two-client synchronization, friend
-play, and visual UI review remain pending.
+play, and visual UI review remain pending. Those baseline results do not validate
+the new favorites behavior or layout in v0.1.6.
 
 Code review on **October 13, 2026** found no blocker in the basic two-human flow.
 The actual component map has User slots 1 and 2, with separate menus, spawn/clear
@@ -32,14 +44,16 @@ if they are part of your match. This limitation does not prevent a basic 1v1.
 1. Close the previous game and Editor map before rebuilding or reopening.
 2. Run `python tools/build_map.py`, then
    `python -m unittest discover -s tests -v`.
-3. Open **Open Arena.cmd** and press **Ctrl+F9**. Check the version is **0.1.5**.
+3. Open **Open Arena.cmd** and press **Ctrl+F9**. Check the version is **0.1.7**.
 4. With only Player 1 present, confirm **Spawn Enemy [Unit]** and **Reset Arena**
-   are available. Spawn friendly and hostile Marines. Friendly units should
+   are available. Confirm the favorites are **Marine**, **Void Ray**, and **Queen**
+   from top to bottom, each with **10**, **5**, and **1** buttons on the right.
+   Use Marine's **1** button and **Spawn Enemy Marine**. Friendly units should
    belong to Player 1; solo enemies should use hostile Player 15 and advance
    toward your spawn area.
 5. Test **Clear My Army**, then **Reset Arena**. Clearing your army should leave
-   enemies; reset should remove both. The selected race/unit and speed should
-   remain in place.
+   enemies; reset should remove both. Favorites, the selected race/unit, and speed
+   should remain in place.
 6. Complete [NEXT_SOLO_TEST.md](NEXT_SOLO_TEST.md), including the roster, speed,
    unit limit, and surviving army-loss checks. Resolve Editor errors and fallback
    failures before the online test.
@@ -54,12 +68,11 @@ if they are part of your match. This limitation does not prevent a basic 1v1.
    players as enemies itself. See [Blizzard's game variants tutorial](https://s2editor-guides.readthedocs.io/New_Tutorials/01_Introduction/012_Game_Variants/).
 2. Save a current packed
    `.SC2Map` copy into `maps/` so an older packed file is not uploaded by mistake.
-   At the time of this review, `maps/` contains no packed map; the component folder
-   is the current source.
+   Existing packed maps are stale until saved from the rebuilt component folder.
 3. Use **File > Publish**, sign in with the original publishing account, and use
    the same region and **Published Name** as the existing online map.
 4. Choose **Minor revision**. Reusing the published name updates that map and
-   increments its online revision automatically. `0.1.5` is the source version,
+   increments its online revision automatically. `0.1.7` is the source version,
    separate from Battle.net's revision number.
 5. Keep the existing release setting, or use **Private** for author-hosted friend
    testing. A Private map permits the author to create games and invite others.
@@ -78,16 +91,19 @@ should occupy **Player 1** and the friend **Player 2**, both as human players.
 Do not substitute a computer player or observer for the second human.
 
 1. **Lobby and version:** confirm both human slots can be joined. Start together
-   and check both clients show **0.1.5**. If only the solo controls appear, record
+   and check both clients show **0.1.7**. If only the solo controls appear, record
    the lobby slots and stop to investigate Player 2 detection.
-2. **Menu isolation:** Player 1 chooses Terran / Marine while Player 2 chooses
-   Protoss / Zealot. Change one player's selection. The other player's race,
-   unit, and spawn-button caption should stay unchanged. Repeat from the other
-   client and try a Zerg selection.
-3. **Ownership and placement:** spawn one unit each. Each unit should appear on
-   its owner's side of the arena, and each client should be able to select and
+2. **Favorites and menu isolation:** both players start with Marine, Void Ray,
+   and Queen. Player 1 adds Terran / Marauder; only Player 1 should now show
+   Void Ray, Queen, Marauder. Player 2 adds Protoss / Zealot; only Player 2 should
+   show Void Ray, Queen, Zealot. Repeat a unit selection to check duplicates and
+   FIFO ordering. Changing only the race must leave all three favorites intact.
+   The other player's dropdowns and favorites must stay unchanged.
+3. **Ownership, counts, and placement:** use favorite **1**, **5**, and **10**
+   buttons on each client and confirm the matching count increases. Each unit
+   should appear on its owner's side, and each client should be able to select and
    command its own unit. Both army counters should show the expected counts.
-   Neither player's spawn button should create a unit owned by the other player
+   Neither player's favorite buttons should create a unit owned by the other player
    or by the solo enemy slot.
 4. **Human combat:** spawn a small ground army each, issue movement and attack
    orders manually, and meet in the arena. The armies should be hostile and able
@@ -95,13 +111,15 @@ Do not substitute a computer player or observer for the second human.
    enemy's automatic attack-move orders.
 5. **Clear isolation:** while both armies are alive, Player 1 uses **Clear My Army**.
    Only Player 1's units and counter should clear. Spawn again, then repeat with
-   Player 2. The other army, menu selection, and game speed should remain.
+   Player 2. Both players' favorites, the other army, menu selections, and game
+   speed should remain.
 6. **Shared speed:** Player 1 changes speed from Normal to Slower and Faster.
    Both clients should show the same current speed label and run at the same
    speed. Player 2 should have no speed-changing control. Return to Normal.
-7. **Army limit:** at a quiet moment, clear both armies and spawn up to **100**
-   units on one side, moving units away from the spawn area as needed. The next
-   spawn should not create a 101st living unit.
+7. **Army limit:** at a quiet moment, clear both armies and spawn **95** units on
+   one side, moving units away from the spawn area as needed. Click **10**: only
+   five more should spawn. Further favorite buttons must not create a 101st
+   living unit.
    The other player should still be able to spawn their own units. Clear the
    first army and verify it can spawn again; repeat for the other side.
 8. **Army loss:** allow one player's army to die. Both clients should remain in
@@ -121,9 +139,13 @@ any failure. Keep Editor errors or SC2 script/text errors if any appear.
 
 | Stage | Result |
 | --- | --- |
-| Galaxy syntax and 20 source/metadata regression checks | Passed |
-| Native compilation and 22 single-client smoke checks | Passed |
-| Interactive Editor solo check and UI review | Pending |
+| v0.1.5 baseline: syntax, 20 source/metadata checks, 22 native single-client checks | Passed (historical) |
+| v0.1.6 Galaxy syntax and 30 regression checks | Passed |
+| v0.1.6 native compilation and 40 single-client smoke checks | Passed (Player 2 simulated) |
+| v0.1.7 syntax and 37 regression checks | Passed |
+| v0.1.7 native compilation and 648 combat setup checks | Passed (one client; owners 1, 2 and 15) |
+| Interactive favorites defaults, FIFO, repeated and mixed-race selections | Pending |
+| Favorite 1/5/10 counts, partial batches, and solo UI review | Pending |
 | Same-map publishing update | Pending |
 | Two-human lobby and menu isolation | Pending |
 | Ownership, placement, manual combat | Pending |

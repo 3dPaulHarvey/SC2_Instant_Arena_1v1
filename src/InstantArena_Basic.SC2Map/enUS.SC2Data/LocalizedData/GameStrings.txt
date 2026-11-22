@@ -1,6 +1,6 @@
 DocInfo/Name=Instant Arena - Basic Marine Arena
-DocInfo/DescShort=Instant Arena v0.1.5: solo or two-player combat sandbox.
-DocInfo/DescLong=Choose from 52 multiplayer units for solo testing or a two-human arena sandbox. Each human spawns, commands, and clears their own army. Solo mode also provides enemy spawning and arena reset.
+DocInfo/DescShort=Instant Arena v0.1.7: all unit research, 1-1 upgrades, and battle-ready armies.
+DocInfo/DescLong=Choose from 52 multiplayer units and spawn 10, 5, or 1 from your favorites. Both sides get level-1 weapons, armor and shields, all unit research, full starting vitals, and mirrored formations. Carriers start fully armed. Each human commands their own army; solo mode also provides enemy spawning and arena reset.
 MapInfo/Player00/Name=Neutral
 MapInfo/Player01/Name=Player 1
 MapInfo/Player02/Name=Player 2
